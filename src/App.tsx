@@ -1,12 +1,10 @@
 import React from 'react';
-import image from "./Star.svg";
 
 class App extends React.Component {
 	private canvasRef: HTMLCanvasElement | null = null;
 	private canvasContext: CanvasRenderingContext2D | null = null;
 	private canvasAnimationFrame: number | null = null;
 	private lastTime: number = 0;
-	private particleRef: HTMLImageElement | null = null;
 
 	componentDidMount() {
 		window.addEventListener("resize", () => {
@@ -30,17 +28,8 @@ class App extends React.Component {
 				>
 
 				</canvas>
-				<img style={{display: "none"}} src={image} ref={this.setParticleRef}/>
 			</div>
 		)
-	}
-
-	setParticleRef = (instance: HTMLImageElement | null) => {
-		this.particleRef = instance;
-
-		if(this.particleRef) {
-			// this.particle.sprite = this.particleRef;
-		}
 	}
 
 	setCanvasRef = (instance: HTMLCanvasElement | null) => {
@@ -58,28 +47,34 @@ class App extends React.Component {
 		if(!this.canvasContext || !this.canvasRef) {
 			return;
 		}
+		
+		const currentTime = performance.now();
+		const deltaTime = (currentTime - this.lastTime) / 1000;
+		
+		this.canvasRender(this.canvasContext, this.canvasRef, deltaTime);
+		
+		this.lastTime = currentTime;
 
 		this.canvasAnimationFrame = window.requestAnimationFrame(() => {
 			this.canvasLoop();
 		});
-
-		const currentTime = performance.now();
-		const deltaTime = (currentTime - this.lastTime) / 1000;
-
-		this.canvasRender(this.canvasContext, this.canvasRef, deltaTime);
-		
-		this.lastTime = currentTime;
 	}
 
+	private particleCount = 10;
 	private particles: Array<Particle> = new Array<Particle>();
 
 	canvasInit = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
-		for(let i = 0; i < 20; i++) {
-			this.particles[i] = new Particle();
+		for(let i = 0; i < this.particleCount; i++) {
+			this.particles[i] = new Particle(ctx, canvas);
 			this.particles[i].init(ctx, canvas);
-			this.particles[i].direction = Math.random() * 360;
 		}
-
+		
+		setInterval(() => {
+			for(let i = 0; i < this.particleCount; i++) {
+				this.particles[i] = new Particle(ctx, canvas);
+				this.particles[i].init(ctx, canvas);
+			}
+		}, 2500);
 	}
 
 	canvasRender = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, deltaTime: number) => {
@@ -88,128 +83,151 @@ class App extends React.Component {
 		ctx.font = "30px Arial";
 		ctx.fillText("FPS: " + (1 / deltaTime).toFixed(1), 10, 50);
 
-		
+
 		ctx.save();
 
-		for(let i = 0; i < 20; i++) {
-			this.particles[i].sprite = this.particleRef;
+		for(let i = 0; i < this.particleCount; i++) {
 			this.particles[i].render(ctx, canvas, deltaTime);
 		}
 
 		ctx.restore();
 	}
+
+}
+
+class Vector2 {
+	public x: number = 0;
+	public y: number = 0;
+
+	constructor(x: number, y:number) {
+		this.x = x;
+		this.y = y;
+	}
 }
 
 class Particle {
-	private position = {x: 0, y: 0};
-	private velocity = {x: 3, y: 12};
-	private size = {width: 100, height: 100};
-	private drag = {x: 1.5, y: 1};
-	private bounciness = 0.5;
-	private gravity: number = 10;
-	private maxVelocity: number = 20;
-	private yBounds = 0;
-	private canvas: HTMLCanvasElement | null = null;
+	private position = new Vector2(0, 0);
+	private velocity = new Vector2(1, -7);
+	private maxVelocity = 15;
+	private gravity = 20;
+	private drag = new Vector2(0.97, 0.96);
 
-	public sprite: HTMLImageElement | null = null;
-	public direction: number = 0;
+	private initialGround = 0;
+	private ground = 0;
+	private direction = new Vector2(0, 0);
+
+	private symbols = ["♥", "♦", "♠", "♣"];
+	private symbol = "♥";
+
+	private canvas: HTMLCanvasElement;
+	private ctx: CanvasRenderingContext2D;
+
+	private glowEffect = 0.0;
+	private glowDirection = true;
+	
+	constructor(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
+		this.canvas = canvas;
+		this.ctx = ctx;
+	}
 
 	init(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
-		this.canvas = canvas;
+		this.position = new Vector2(canvas.width / 2, canvas.height / 2);
+		this.initialGround = this.position.y;
 
-		this.position.x = canvas.width / 2 - this.size.width / 2;
-		this.position.y = canvas.height / 2 - this.size.height / 2;
+		this.direction.x = Math.random() < 0.5 ? -1 : 1;
+		this.direction.y = this.getRandomArbitrary(-1, 1);
 
-		this.velocity = {
-			x: this.getRandomArbitrary(-4, 4),
-			y: this.getRandomArbitrary(4, 12),
-		}
+		this.velocity = new Vector2(
+			this.direction.x * this.getRandomArbitrary(2, 5),
+			-7 * this.getRandomArbitrary(0.5, 2)
+		);
+		this.symbol = this.symbols[Math.round(this.getRandomArbitrary(0, 3))];
 
-		this.yBounds = this.position.y;
+		this.glowEffect = Math.random();
 	}
-
-	getRandomArbitrary(min: number, max: number) {
-		return Math.random() * (max - min) + min;
-	}
-
+	
 	render(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, deltaTime: number) {
 		this.velocity.y += this.gravity * deltaTime;
 
+
 		if(this.velocity.x) {
-			if(this.velocity.x > 0) {
-				this.velocity.x -= this.drag.x * deltaTime;
-
-				if(this.velocity.x > this.maxVelocity) {
-					this.velocity.x = this.maxVelocity;
-				}
-			} else {
-				this.velocity.x += this.drag.x * deltaTime;
-
-				if(this.velocity.x < -this.maxVelocity) {
-					this.velocity.x = -this.maxVelocity;
-				}
-			}
+			this.velocity.x *= this.drag.x;
+			this.velocity.x = Math.min(Math.max(this.velocity.x, -this.maxVelocity), this.maxVelocity);
 		}
 
 		if(this.velocity.y) {
-			if(this.velocity.y > 0) {
-				this.velocity.y -= this.drag.y * deltaTime;
-
-				if(this.velocity.y > this.maxVelocity) {
-					this.velocity.y = this.maxVelocity;
-				}
-			} else {
-				this.velocity.y += this.drag.y * deltaTime;
-
-				if(this.velocity.y < -this.maxVelocity) {
-					this.velocity.y = -this.maxVelocity;
-				}
-			}
+			this.velocity.y *= this.drag.y;
+			this.velocity.y = Math.min(Math.max(this.velocity.y, -this.maxVelocity), this.maxVelocity);
 		}
 
 		this.position.x += this.velocity.x;
 		this.position.y += this.velocity.y;
 
-		if(this.position.y > this.yBounds) {
-			this.position.y = this.yBounds;
-			this.velocity.y = -Math.abs(this.velocity.y) * this.bounciness;
+		this.ground = this.initialGround + (((this.position.x - (canvas.width / 2))) * (this.direction.y));
+
+		if(this.position.y > this.ground) {
+			this.position.y = this.ground;
+			this.velocity.y = -Math.abs(this.velocity.y) * 0.75;
 		}
 
-		if(this.canvas) {
-			this.size = {
-				width: this.canvas.height / 2 - this.position.y,
-				height: this.canvas.height / 2 - this.position.y,
+		if(this.glowDirection) {
+			this.glowEffect += deltaTime / 2;
+
+			if(this.glowEffect >= 1) {
+				this.glowDirection = !this.glowDirection;
 			}
-		}
-
-		if(this.sprite) {
-			ctx.translate((this.position.x + this.size.width / 2), (this.position.y + this.size.height / 2));
-			ctx.rotate(-45*Math.PI/180);
-			ctx.translate(-(this.position.x + this.size.width / 2), -(this.position.y + this.size.height / 2));
-
-			if(this.canvas) {
-				ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
-				ctx.rotate(this.direction*Math.PI/180);
-				ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
-			}
-			ctx.drawImage(this.sprite, this.position.x, this.position.y, this.size.width, this.size.height);
-
-			if(this.canvas) {
-				ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
-				ctx.rotate(-this.direction*Math.PI/180);
-				ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
-			}
-
-			ctx.translate((this.position.x + this.size.width / 2), (this.position.y + this.size.height / 2));
-			ctx.rotate(45*Math.PI/180);
-			ctx.translate(-(this.position.x + this.size.width / 2), -(this.position.y + this.size.height / 2));
 		} else {
-			ctx.beginPath();
-			ctx.rect(this.position.x, this.position.y, this.size.width, this.size.height);
-			ctx.fillStyle = "black";
-			ctx.fill();
+			this.glowEffect -= deltaTime / 2;
+
+			if(this.glowEffect <= 0.25) {
+				this.glowDirection = !this.glowDirection;
+			}
 		}
 
+		ctx.save();
+
+		var grd = ctx.createRadialGradient(
+			this.position.x, 
+			this.position.y - 10,
+			1, 
+			this.position.x, 
+			this.position.y - 10,
+			35
+		);
+		grd.addColorStop(0, `rgba(255, 255, 255, ${this.glowEffect * 0.1})`);
+		grd.addColorStop(0.5, `rgba(255, 255, 255, 0)`);
+
+		ctx.fillStyle = grd;
+		ctx.fillRect(this.position.x - 50, this.position.y - 60, 100, 100);
+
+		ctx.font = `${((this.ground - this.initialGround) / 15) + 30}px Arial`;
+		ctx.fillStyle = `rgba(255, 255, 255, ${this.glowEffect})`;
+		ctx.textAlign = "center";
+		ctx.fillText(this.symbol, this.position.x, this.position.y);
+
+		ctx.translate(this.position.x, this.position.y);
+		ctx.rotate(180 * Math.PI / 180);
+		ctx.translate(-this.position.x, -this.position.y);
+		ctx.font = `${((this.ground - this.initialGround) / 15) + 30}px Arial`;
+
+		const gradient = ctx.createLinearGradient(
+			this.position.x, 
+			this.position.y - (this.position.y - this.ground), 
+			this.position.x, 
+			this.position.y - (this.position.y - this.ground) - (((this.ground - this.initialGround) / 15) + 30 / 2)
+		);
+		gradient.addColorStop(0, `rgba(255, 255, 255, ${this.glowEffect * 0.25})`);
+		gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+
+		ctx.fillStyle = gradient;
+		ctx.textAlign = "center";
+		ctx.fillText(this.symbol, this.position.x, this.position.y + (this.position.y - this.ground));
+
+		ctx.restore();
+	}
+
+	getRandomArbitrary = (min: number, max: number) => {
+		return Math.random() * (max - min) + min;
 	}
 }
 
